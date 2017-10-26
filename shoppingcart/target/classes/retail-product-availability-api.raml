@@ -1,0 +1,233 @@
+#%RAML 1.0
+title: Product Availability Process API
+version: dev
+baseUri: http://localhost:8082
+
+traits: 
+  geoSearch: !include traits/geoSearch.raml
+  productSearch: !include traits/productSearch.raml
+
+types: 
+
+  StoreInfo:
+    type: object
+    properties: 
+      storeId?: string
+      name: string
+      description?: string
+      notes?: string
+      openingHours:
+        type: string
+        example: "Mo,Tu,We,Th,Fr 08:00-18:00"
+      contact: ContactInfo
+      address: Address
+      geo: Geo
+      distance?: number
+      distanceUnit?: 
+        type: string
+        enum: [mi, km]
+  
+  ContactInfo:
+    type: object
+    description: | 
+      Contact information 
+    properties: 
+      email: string
+      phone: string
+      
+  Address:
+    type: object
+    properties: 
+      streetLine1: string
+      streetLine2: string
+      city: string
+      zipCode: string
+      state: string
+      country: string
+      
+  Geo:
+    type: object
+    properties: 
+      latitude: 
+        type: number
+        format: double
+      longitude:
+        type: number
+        format: double
+      
+  StoreAvailabilityData:
+    type: object
+    properties: 
+      storeInfo: StoreInfo
+      quantityInStock: integer
+      quantityReserved?: integer
+  
+  WarehouseInventory:
+    type: object
+    properties:
+      warehouseId: string
+      name?: string  
+      availableCount?:
+        type: number
+        minimum: 0
+      reservedCount?: 
+        type: number
+        minimum: 0
+      lastUpdated?: datetime
+  
+  
+  PartnerInfo:
+    type: object
+    properties: 
+      partnerId?: string
+      name: string
+      description?: string
+      email: string
+      phone: string
+      url: string
+      shippingPrice: number
+  
+  PartnerAvailabilityData:
+    type: object
+    properties: 
+      partnerInfo: PartnerInfo
+      quantityInStock: integer
+      productPrice: number
+      tax: number
+      quantityReserved?: integer
+  
+  Availability:
+    type: object
+    properties:
+      productId: string
+      variantId: string
+      warehousesAvailability: WarehouseInventory[]
+      storesAvailability:  StoreAvailabilityData[]
+      partnersAvailability: PartnerAvailabilityData[]
+  
+  AvailabilityForLocation: 
+    type: object
+    properties: 
+      productId: string
+      variantId: string
+      locationId: string
+      locationType: 
+        type: string
+        enum: [STORE, WAREHOUSE, PARTNER]
+      quantityInStock: integer 
+      tax:  number
+      shipping: number
+        
+  Reservation: 
+    type: object
+    properties:
+      productId: string
+      variantId: string
+      customerId: string
+      quantity: integer
+      locationId: string
+      locationType: 
+        type: string
+        enum: [STORE, WAREHOUSE, PARTNER]
+        
+  Tax:
+    description: |
+      tax value in percentage
+    properties: 
+      totalTax: number
+      
+  Shipping:   
+    description: |
+      shipping value for Warehouse  
+    properties:
+      totalShippingCost: number
+  
+/availability:       
+  get:
+    is: [ geoSearch, productSearch ]
+    responses:
+      200: 
+        body: 
+          application/json:
+            type: Availability
+            example: !include examples/get_availability_response.raml
+
+
+
+/reservation: 
+  post:
+    body:
+      application/json:
+        type: Reservation 
+        example: !include examples/post_reservation_request.raml
+    responses:
+      201: 
+        body:
+          application/json:
+            example: 
+              {
+              "message": "Product was reserved"   
+              }
+
+                    
+/locations:
+  /{locationId}: 
+    /availability:       
+        get:
+          is: [  geoSearch, productSearch ]
+          queryParameters: 
+              locationType:
+                required: true
+                type: string
+                enum: [STORE, WAREHOUSE, PARTNER]
+              price: 
+                type: number
+                default: 0
+          responses:
+            200: 
+              body: 
+                application/json:
+                  type: AvailabilityForLocation
+                  example: !include examples/get_availability_for_location_response.raml
+
+
+    /shipping:
+        get:
+          is: [ geoSearch, productSearch ]
+          queryParameters:
+            locationType:
+              type: string 
+              enum: [STORE, WAREHOUSE, PARTNER]
+          description: |
+            shipping value for location
+          responses: 
+            200:
+              body: 
+                application/json:
+                  type: Shipping
+                  example: |
+                    {  
+                      "totalShippingCost": 5.00
+                    }              
+    
+    /taxes:
+        get:
+          is: [ geoSearch, productSearch ]
+          queryParameters: 
+            locationType:
+              type: string 
+              enum: [STORE, WAREHOUSE, PARTNER]
+            zipCode?: 
+              type: string        
+          description: |
+            tax value for location
+          responses: 
+            200:
+              body: 
+                application/json:
+                  type: Tax
+                  example: |
+                    {  
+                      "totalTax": 4.26
+                    }
+
