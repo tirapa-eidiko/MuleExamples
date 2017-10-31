@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <db:mysql-config name="MySQL_Configuration" host="localhost" port="3306" user="root" password="root" database="one" doc:name="MySQL Configuration"/>
+    <sfdc:config name="Salesforce__Basic_Authentication" username="************" password="*************" securityToken="YBJ6ULya1PI0XGRIJ52DX0mw" doc:name="Salesforce: Basic Authentication"/>
+    <jms:activemq-connector name="Active_MQ" username="admin" password="admin" brokerURL="tcp://localhost:61616" validateConnections="true" doc:name="Active MQ"   />
+    <flow name="batch_commitFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/commit" doc:name="HTTP"/>
+        <batch:execute name="batch_commitBatch" doc:name="batch_commitBatch"/>
+        <batch:execute name="batch_commitBatch1" doc:name="batch_commitBatch1"/>
+        <logger message="after second batch execute #[payload]" level="INFO" doc:name="Logger"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="THis is the exception catch in error handling........................................." level="INFO" doc:name="Logger"/>
+        </catch-exception-strategy>
+    </flow>
+    <batch:job name="batch_commitBatch1" max-failed-records="-1">
+        <batch:input>
+            <db:select config-ref="MySQL_Configuration" streaming="true" doc:name="Database">
+                <db:parameterized-query><![CDATA[select * from testing]]></db:parameterized-query>
+            </db:select>
+        </batch:input>
+        <batch:process-records>
+            <batch:step name="Batch_Step6">
+                <logger message="output of batch 1 #[payload]" level="INFO" doc:name="Logger"/>
+            </batch:step>
+        </batch:process-records>
+        <batch:on-complete>
+            <logger message="ON complete phase in Batch step 1 #[payload]" level="INFO" doc:name="Logger"/>
+        </batch:on-complete>
+    </batch:job>
+    <batch:job name="batch_commitBatch" max-failed-records="-1">
+        <batch:input>
+            <db:delete config-ref="MySQL_Configuration" doc:name="deleting records from database">
+                <db:parameterized-query><![CDATA[delete from testing]]></db:parameterized-query>
+            </db:delete>
+            <db:select config-ref="MySQL_Configuration" doc:name="fetching records from database" streaming="true">
+                <db:parameterized-query><![CDATA[select * from sample]]></db:parameterized-query>
+            </db:select>
+        </batch:input>
+        <batch:process-records>
+            <batch:step name="Batch_Step" accept-expression="#[payload.sno&lt;=6]" >
+                <batch:set-record-variable variableName="record" value="#[payload.sno]" doc:name="Record Variable"/>
+                <logger message="database values #[payload]" level="INFO" doc:name="database values "/>
+                <db:insert config-ref="MySQL_Configuration" doc:name="Inserting elements into database">
+                    <db:parameterized-query><![CDATA[insert into testing values(#[payload.sno],#[payload.sname],#[payload.saddr])]]></db:parameterized-query>
+                </db:insert>
+            </batch:step>
+            <batch:step name="Batch_Step1" accept-policy="ONLY_FAILURES">
+                <logger message="#['these are only failed records' #[payload] '\n is successfull record???' #[isSuccessfulRecord()]]" level="INFO" doc:name="only failed records "/>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[{
+	LastName: payload.sname,
+	OtherCity: payload.saddr,
+	Phone: payload.sno as :string
+}]]]></dw:set-payload>
+                </dw:transform-message>
+                <sfdc:create config-ref="Salesforce__Basic_Authentication" type="Contact" doc:name="Salesforce">
+                    <sfdc:objects ref="#[payload]"/>
+                </sfdc:create>
+            </batch:step>
+            <batch:step name="Batch_Step5" accept-policy="ONLY_FAILURES">
+                <logger message="failed records in batch step 1 #[payload]" level="INFO" doc:name="failed records"/>
+                <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+                <jms:outbound-endpoint queue="testing" connector-ref="Active_MQ" doc:name="JMS">
+                    <jms:transaction action="NONE"/>
+                </jms:outbound-endpoint>
+            </batch:step>
+            <batch:step name="Batch_Step2">
+                <logger message="No failures Default #[payload]" level="INFO" doc:name="No failures"/>
+            </batch:step>
+            <batch:step name="Batch_Step3" accept-expression="#[recordVars.record&gt;=4]" accept-policy="ALL">
+                <logger message="all records #[payload]" level="INFO" doc:name="all records"/>
+            </batch:step>
+        </batch:process-records>
+        <batch:on-complete>
+            <logger message="On complete face in Batch step #[payload]" level="INFO" doc:name="Logger"/>
+        </batch:on-complete>
+    </batch:job>
+</mule>
