@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <spring:beans>
+        <spring:bean id="jedisConnFactory" name="jedisConnFactory" class="org.springframework.data.redis.connection.jedis.JedisConnectionFactory"/>
+        <spring:bean id="redisTemplate" name="redisTemplate" class="org.springframework.data.redis.core.RedisTemplate" lazy-init="false">
+        <spring:property name="connectionFactory" ref="jedisConnFactory"/>
+        <spring:property name="valueSerializer">
+        <spring:bean class="org.springframework.data.redis.serializer.JacksonJsonRedisSerializer">
+		<spring:constructor-arg type="java.lang.Class" value="java.lang.Object" />
+</spring:bean>
+</spring:property>
+        </spring:bean>
+        <spring:bean id="cacheManager" name="cacheManager" class="org.springframework.data.redis.cache.RedisCacheManager"    >
+        <spring:constructor-arg ref="redisTemplate" />
+		</spring:bean>
+    </spring:beans>
+    <ee:object-store-caching-strategy name="Caching_Strategy" keyGenerationExpression="#[message.inboundProperties.'http.query.params'.key]" doc:name="Caching Strategy">
+        <custom-object-store class="RedisObjectStore"/>
+    </ee:object-store-caching-strategy>
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <db:oracle-config name="Oracle_Configuration"      doc:name="Oracle Configuration" url="jdbc:oracle:thin:eidiko/sarasu10@localhost:1521:XE"/>
+    <flow name="mule-cache-strategyFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/cache" doc:name="HTTP"/>
+        <expression-component doc:name="Expression"><![CDATA[[app.registry.put('operation',message.inboundProperties.'http.query.params'.operation)]]]></expression-component>
+        <flow-ref name="processFlow" doc:name="processFlow"/>
+        <set-payload value="#[payload]" doc:name="Set Payload"/>
+    </flow>
+    <flow name="cacheFlow">
+        <ee:cache cachingStrategy-ref="Caching_Strategy" doc:name="Cache">
+            <db:select config-ref="Oracle_Configuration" doc:name="Database">
+                <db:parameterized-query><![CDATA[select emp_id,firstname,lastname,salary,dept_id from employees where dept_id= #[message.inboundProperties.'http.query.params'.key]]]></db:parameterized-query>
+            </db:select>
+            <logger message="#[message.payloadAs(java.lang.String)]" level="INFO" doc:name="Logger"/>
+        </ee:cache>
+        <set-payload value="#[payload]" doc:name="Set Payload"/>
+    </flow>
+    <flow name="processFlow">
+        <choice doc:name="Choice">
+            <when expression="#[message.inboundProperties.'http.query.params'.operation == 'retrieve' || message.inboundProperties.'http.query.params'.operation == 'store']">
+                <logger level="INFO" doc:name="Logger"/>
+                <flow-ref name="cacheFlow" doc:name="cacheFlow"/>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>
+                </dw:transform-message>
+            </when>
+            <when expression="#[message.inboundProperties.'http.query.params'.operation=='remove']">
+                <logger level="INFO" doc:name="Logger"/>
+                <ee:invalidate-key doc:name="invalidate-key" cachingStrategy-ref="Caching_Strategy" keyGenerationExpression="#[message.inboundProperties.'http.query.params'.key]"></ee:invalidate-key>
+                <expression-component doc:name="Expression"><![CDATA[payload=app.registry.get("evict");
+app.registry.remove("evict");]]></expression-component>
+            </when>
+            <otherwise>
+                <logger message="invalid operation" level="INFO" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+    </flow>
+</mule>
