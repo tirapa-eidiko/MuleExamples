@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <http:listener-config name="process-api-httpListenerConfig" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <apikit:config name="process-api-config" raml="process-api.raml" consoleEnabled="false" doc:name="Router"/>
+    <flow name="process-api-main">
+        <http:listener config-ref="process-api-httpListenerConfig" path="/api/*" doc:name="HTTP"/>
+        <apikit:router config-ref="process-api-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="process-api-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="process-api-console">
+        <http:listener config-ref="process-api-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="process-api-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="put:/shoppingCarts/{shoppingCartId}:application/json:process-api-config">
+        <flow-ref name="updateShoppingCart" doc:name="updateShoppingCart"/>
+
+    </flow>
+    <flow name="delete:/shoppingCarts/{shoppingCartId}:process-api-config">
+        <flow-ref name="deleteShoppingCart" doc:name="deleteShoppingCart"/>
+
+    </flow>
+    <flow name="get:/customers/{customerId}/shoppingCarts:process-api-config">
+        <flow-ref name="getShoppingCartsForCustomer" doc:name="getShoppingCartsForCustomer"/>
+
+    </flow>
+    <flow name="get:/shoppingCarts/{shoppingCartId}:process-api-config">
+        <flow-ref name="getShoppingCart" doc:name="getShoppingCart"/>
+
+    </flow>
+    <flow name="post:/shoppingCarts:application/json:process-api-config">
+        <flow-ref name="createShoppingCart" doc:name="createShoppingCart"/>
+
+    </flow>
+    <flow name="get:/availability:application/json:process-api-config">
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "productId": "122332665555",
+  "variantId": "88668866-2c6d-4fa6-9e17-4b2c42e0f051",
+  "warehousesAvailability": [
+    {
+      "warehouseId": "1",
+      "name": "Central Warehouse",
+      "availableCount": 100    
+    }
+  ], 
+  "partnersAvailability": [
+    {
+      "quantityInStock": 20,
+      "productPrice": 36.9,
+      "tax": 3.69,
+      "partnerInfo": {
+        "partnerId": "2d9df8be-a185-4dde-9577-d6edf6cdb398",
+        "name": "Best Amazing Store",
+        "description": "",
+        "email": "info@luckystore.example.com",
+        "phone": "+1-202-555-0119",
+        "url": "www.luckystore.example.com",
+        "shippingPrice": 5.5
+      }
+    }
+  ],   
+  "storesAvailability": [
+      {
+      "quantityInStock" : 55,
+      "storeInfo": {
+        "storeId": "1c9a20dc-c585-42fd-ac1a-1216085b76d2",
+        "name": "Anypoint Store 1",
+        "description": "Department store chain providing brand-name c",
+        "notes": "",
+        "openingHours": "Mo,Tu,We,Th,Fr 08:00-18:00",
+        "address": {
+          "streetLine1": "170 O'Farrell St",
+          "streetLine2": "",
+          "city": "San Francisco",
+          "zipCode": "94102",
+          "state": "California",
+          "country": "USA"
+        },
+        "contact": {
+          "email": "store1@anypointstore.example.com",
+          "phone": "+1-202-555-0111"
+        },
+        "geo": {
+          "latitude": 37.78703308105469,
+          "longitude": -122.4060287475586
+        },
+        "distance": 0.12951756569805717,
+        "distanceUnit": "km"
+      }
+    }
+  ] 
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="get:/reservation:application/json:process-api-config">
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+    "message":"Product was reserved" 
+  
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="get:/locations/{locationId}/availability:process-api-config">
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "productId": "cd67cd8a-8901-48c5-890b-0a21f4a0f8ad",
+  "variantId": "beb3c34f-55b0-49c8-b7e2-5585727713ef",
+  "locationId": "1c9a20dc-c585-42fd-ac1a-1216085b76d2",
+  "locationType": "STORE",
+  "quantityInStock": 20,
+  "tax": 3.8,
+  "shipping": 0
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="get:/locations/{locationId}/shipping:process-api-config">
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{  
+  "totalShippingCost": 5.00
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="get:/locations/{locationId}/taxes:process-api-config">
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "totalTax": 4.26
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <apikit:mapping-exception-strategy name="process-api-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>
